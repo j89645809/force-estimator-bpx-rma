@@ -1,0 +1,10 @@
+estimator_frame_dim: 64
+history_steps: 25
+policy_dim: 49
+history_dim: 1225
+action_dim: 12
+sample_period_s: 0.02
+policy_rate_hz: 50
+pd_rate_hz: 500
+force_frame: body
+force_scale_N: 45.0

@@ -1,0 +1,15 @@
+{
+  "verified": true,
+  "fresh_paired_seeds": 10,
+  "full_runs": 20,
+  "physics_substeps": 480000,
+  "no_budget_fabrication": true,
+  "recovery_censoring_preserved": true,
+  "t_intervals_recomputed": true,
+  "simultaneous_bounds_recomputed": true,
+  "model_sha256": {
+    "selected": "92b52bf4fe68a4f08ca258c518aa00f5e5232d85621b1ba13cf50d381de55639",
+    "start": "0dcd30cb89a23438e31bdc38b851e6e82c9b362693d0b6aa119941dda4baff5b"
+  },
+  "formal_application_acceptance": "undetermined"
+}

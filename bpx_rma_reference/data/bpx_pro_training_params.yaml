@@ -1,0 +1,87 @@
+# BPX-Pro 训练参数（辨识结果 → RL 训练）
+#
+# 来源：悬空 PACE 辨识（IsaacLab-PACE，与训练同引擎）+ 落地承重验证 + 走路数据复核。
+# 这份是训练侧的"已经换算好、可以直接填进引擎"的版本，和辨识产出的原始 yaml 不同的地方：
+#   * 膝 frictionloss 用**承重值 2.5**，不是悬空辨识的零负载值 0.56–0.96。
+#     承重实测 F = 1.0 + 0.26·L：站立时前膝 2.5、后膝 3.4，走路时 2–2.5。
+#     常数 2.5 + 随机 1.5–3.5 就覆盖了；要更准可以开 knee_friction.load_model（逐步按负载更新）。
+#   * 整机质量 15.1 kg，不是 USD 的 17.55 kg。
+#
+# 单位：armature kg·m²，damping N·m·s/rad，frictionloss N·m（PhysX 是绝对值，static >= dynamic）。
+# 关节顺序 = bpx_sdk JointIndex = 策略顺序：fl, fr, hl, hr × (hip_roll, hip_pitch, knee)。
+
+robot: bpx_pro
+
+# --- 关节参数标称值 ---------------------------------------------------------
+nominal:
+  fl_hip_roll_joint:  {armature: 0.00254, damping: 0.237, frictionloss: 0.113}
+  fl_hip_pitch_joint: {armature: 0.00528, damping: 0.207, frictionloss: 0.119}
+  fl_knee_joint:      {armature: 0.0206,  damping: 0.325, frictionloss: 2.5}
+  fr_hip_roll_joint:  {armature: 0.00282, damping: 0.232, frictionloss: 0.104}
+  fr_hip_pitch_joint: {armature: 0.00627, damping: 0.209, frictionloss: 0.115}
+  fr_knee_joint:      {armature: 0.0219,  damping: 0.361, frictionloss: 2.5}
+  hl_hip_roll_joint:  {armature: 0.00284, damping: 0.239, frictionloss: 0.106}
+  hl_hip_pitch_joint: {armature: 0.00593, damping: 0.210, frictionloss: 0.115}
+  hl_knee_joint:      {armature: 0.0207,  damping: 0.315, frictionloss: 2.5}
+  hr_hip_roll_joint:  {armature: 0.00315, damping: 0.233, frictionloss: 0.098}
+  hr_hip_pitch_joint: {armature: 0.00581, damping: 0.219, frictionloss: 0.128}
+  hr_knee_joint:      {armature: 0.0213,  damping: 0.376, frictionloss: 2.5}
+
+# --- 整机与执行器 -----------------------------------------------------------
+mass:
+  total_kg: 15.1           # USD 是 17.55，偏重 2.45 kg
+  range_kg: [14.1, 16.1]   # ±1 kg
+  note: 只改 torso 质量，惯量按同比例缩放
+
+delay:
+  physical_ms: 4.0
+  range_ms: [2.0, 8.0]
+  note: 500 Hz 下标称 = 2 步。IsaacLab 用它自带阻尼模型时等效 7 ms。
+
+encoder_bias:
+  nominal_rad: 0.0         # 不烘焙零偏
+  range_rad: [-0.03, 0.03]
+
+actuator:
+  effort_limit_urdf: {hip: 33.0, knee: 50.0}    # N·m
+  velocity_limit:    {hip: 22.0, knee: 15.0}    # rad/s
+  saturation_factor: 2.0                        # DCMotor 堵转力矩 = 峰值 × 该系数
+  effort_limit_deploy: 30.0                     # 板子上 torque_limited_pd 的限幅，训练必须一致
+
+pd:
+  kp: 40.0
+  kd: 1.0
+  default_joint_pos: [0.0, 0.7, -1.4]           # 每条腿 (hip_roll, hip_pitch, knee)
+  action_scale: 0.1875
+
+# --- 随机化范围 -------------------------------------------------------------
+# hip_roll / hip_pitch 可辨识性差（三套方法差 2–3 倍），整体 ±100%；
+# knee 三套一致，armature/damping ±40%，摩擦按承重区间给。
+randomization:
+  hip_roll:
+    armature_frac: 1.0
+    damping_frac: 1.0
+    frictionloss_frac: 1.0
+  hip_pitch:
+    armature_frac: 1.0
+    damping_frac: 1.0
+    frictionloss_frac: 1.0
+  knee:
+    armature_frac: 0.4
+    damping_frac: 0.4
+    frictionloss_range: [1.5, 3.5]   # 绝对值 N·m，覆盖前膝 2.5 / 后膝 3.4
+
+# --- 承重摩擦的负载模型（可选，方案 B）---------------------------------------
+# 开了以后每个控制步按膝负载更新 PhysX 摩擦：F = f0 + mu · L，
+# L = |PD 力矩 - F·sign(v)| 的低通（时间常数 tau_s，只在关节在动时更新）。
+# 关了就用上面 nominal / randomization 里的常数摩擦（方案 A）。
+knee_friction:
+  load_model:
+    enabled: true
+    f0: 1.0
+    f0_range: [0.6, 1.4]       # 每回合随机
+    mu: 0.26
+    mu_range: [0.20, 0.35]     # 每回合随机
+    tau_s: 0.2                 # 负载估计低通时间常数
+    v_move: 0.02               # rad/s，低于此速度不更新负载
+    clamp: [0.3, 5.0]          # 写进 PhysX 前的硬限幅 N·m
